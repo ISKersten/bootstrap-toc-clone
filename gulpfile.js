@@ -1,61 +1,80 @@
-"use strict";
+var gulp = require("gulp");
+var del = require("del");
+var template = require("gulp-template");
+var minifyCss = require("gulp-minify-css");
+var rename = require("gulp-rename");
+var uglify = require("gulp-uglify");
+var jshint = require("gulp-jshint");
+var mochaPhantomJS = require("gulp-mocha-phantomjs");
+var pkg = require("./package.json");
 
-// Load plugins
-const browsersync = require("browser-sync").create();
-const del = require("del");
-const gulp = require("gulp");
-const merge = require("merge-stream");
+gulp.task("clean", function() {
+  return del(["dist/*"]);
+});
 
-// BrowserSync
-function browserSync(done) {
-  browsersync.init({
-    server: {
-      baseDir: "./"
-    },
-    port: 3000
-  });
-  done();
-}
+gulp.task(
+  "build-css",
+  gulp.series([
+    "clean",
+    function() {
+      return gulp
+        .src("bootstrap-toc.css")
+        .pipe(template(pkg))
+        .pipe(gulp.dest("dist"))
+        .pipe(minifyCss({ compatibility: "ie8" }))
+        .pipe(
+          rename({
+            extname: ".min.css"
+          })
+        )
+        .pipe(gulp.dest("dist"));
+    }
+  ])
+);
 
-// BrowserSync reload
-function browserSyncReload(done) {
-  browsersync.reload();
-  done();
-}
+gulp.task(
+  "build-js",
+  gulp.series([
+    "clean",
+    function() {
+      return gulp
+        .src("bootstrap-toc.js")
+        .pipe(template(pkg))
+        .pipe(gulp.dest("dist"))
+        .pipe(
+          uglify({
+            output: {
+              comments: /^!/
+            }
+          })
+        )
+        .pipe(
+          rename({
+            extname: ".min.js"
+          })
+        )
+        .pipe(gulp.dest("dist"));
+    }
+  ])
+);
 
-// Clean vendor
-function clean() {
-  return del(["./vendor/"]);
-}
+gulp.task("js-lint", function() {
+  return gulp
+    .src("bootstrap-toc.js")
+    .pipe(jshint())
+    .pipe(jshint.reporter("default"))
+    .pipe(jshint.reporter("fail"));
+});
 
-// Bring third party dependencies from node_modules into vendor directory
-function modules() {
-  // Bootstrap
-  var bootstrap = gulp.src('./node_modules/bootstrap/dist/**/*')
-    .pipe(gulp.dest('./vendor/bootstrap'));
-  // jQuery
-  var jquery = gulp.src([
-      './node_modules/jquery/dist/*',
-      '!./node_modules/jquery/dist/core.js'
-    ])
-    .pipe(gulp.dest('./vendor/jquery'));
-  return merge(bootstrap, jquery);
-}
+gulp.task("test", function() {
+  return gulp.src("test/index.html").pipe(mochaPhantomJS());
+});
 
-// Watch files
-function watchFiles() {
-  gulp.watch("./**/*.css", browserSyncReload);
-  gulp.watch("./**/*.html", browserSyncReload);
-}
+gulp.task("watch", function() {
+  gulp.watch("bootstrap-toc.js", ["js-lint", "test"]);
+  gulp.watch("test/*", ["test"]);
+});
 
-// Define complex tasks
-const vendor = gulp.series(clean, modules);
-const build = gulp.series(vendor);
-const watch = gulp.series(build, gulp.parallel(watchFiles, browserSync));
+gulp.task("build", gulp.parallel(["build-css", "build-js"]));
 
-// Export tasks
-exports.clean = clean;
-exports.vendor = vendor;
-exports.build = build;
-exports.watch = watch;
-exports.default = build;
+gulp.task("default", gulp.parallel(["build", "js-lint", "test"]));
